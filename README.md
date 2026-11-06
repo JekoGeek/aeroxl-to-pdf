@@ -25,11 +25,13 @@ AeroXL to PDF turns folders full of Excel workbooks into clean PDFs in a few cli
 
 ## Run the app
 
-1. Download `AeroXL2PDF_Win8.exe` from the Releases page.
+1. Download [AeroXL2PDF_Win8.exe](https://github.com/JekoGeek/aeroxl-to-pdf/releases/download/v1.0.0/AeroXL2PDF_Win8.exe) from the Releases page.
 2. Open the app.
 3. Select the folder containing Excel files.
 4. Select an output folder for PDFs.
 5. Choose **Convert to PDF**.
+
+[Download the latest release](https://github.com/JekoGeek/aeroxl-to-pdf/releases/latest)
 
 ## Build from source
 
