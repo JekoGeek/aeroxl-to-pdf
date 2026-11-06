@@ -143,45 +143,78 @@ class ExcelPdfConverter:
         return None
 
 
-class AeroButton(tk.Label):
+class AeroButton(tk.Canvas):
     def __init__(self, parent, text: str, command: Callable, primary: bool = False) -> None:
         self.command = command
         self.primary = primary
         self.normal_bg = "#16b987" if primary else "#ecfbff"
         self.hover_bg = "#0da06f" if primary else "#d5f4ff"
         self.normal_fg = "#ffffff" if primary else "#0c5575"
+        self.text = text
+        self.enabled = True
         super().__init__(
             parent,
-            text=text,
-            bg=self.normal_bg,
-            fg=self.normal_fg,
-            font=("Segoe UI Semibold", 10),
-            padx=18,
-            pady=10,
+            width=142 if primary else 106,
+            height=42,
+            bg=parent.cget("bg"),
+            highlightthickness=0,
             cursor="hand2",
-            relief="flat",
-            bd=0,
         )
+        self._paint(self.normal_bg, self.normal_fg)
         self.bind("<Button-1>", self._invoke)
         self.bind("<Enter>", self._enter)
         self.bind("<Leave>", self._leave)
 
+    def _paint(self, fill: str, foreground: str) -> None:
+        self.delete("all")
+        width = int(self.cget("width"))
+        height = int(self.cget("height"))
+        radius = height // 2
+        self.create_oval(0, 0, height, height, fill=fill, outline="")
+        self.create_oval(width - height, 0, width, height, fill=fill, outline="")
+        self.create_rectangle(radius, 0, width - radius, height, fill=fill, outline="")
+        self.create_text(width // 2, height // 2, text=self.text, fill=foreground, font=("Segoe UI Semibold", 10))
+
     def _invoke(self, event=None) -> None:
-        if str(self.cget("state")) != "disabled":
+        if self.enabled:
             self.command()
 
     def _enter(self, event=None) -> None:
-        if str(self.cget("state")) != "disabled":
-            self.configure(bg=self.hover_bg)
+        if self.enabled:
+            self._paint(self.hover_bg, self.normal_fg)
 
     def _leave(self, event=None) -> None:
-        self.configure(bg=self.normal_bg)
+        if self.enabled:
+            self._paint(self.normal_bg, self.normal_fg)
 
     def set_enabled(self, enabled: bool) -> None:
         if enabled:
-            self.configure(state="normal", bg=self.normal_bg, fg=self.normal_fg, cursor="hand2")
+            self.enabled = True
+            self.configure(cursor="hand2")
+            self._paint(self.normal_bg, self.normal_fg)
         else:
-            self.configure(state="disabled", bg="#b8d4d6", fg="#edf8f7", cursor="arrow")
+            self.enabled = False
+            self.configure(cursor="arrow")
+            self._paint("#b8d4d6", "#edf8f7")
+
+
+class AeroSignature(tk.Canvas):
+    def __init__(self, parent) -> None:
+        super().__init__(parent, width=230, height=42, bg=parent.cget("bg"), highlightthickness=0, cursor="hand2")
+        self._paint(False)
+        self.bind("<Button-1>", lambda event: webbrowser.open_new_tab(GITHUB_URL))
+        self.bind("<Enter>", lambda event: self._paint(True))
+        self.bind("<Leave>", lambda event: self._paint(False))
+
+    def _paint(self, active: bool) -> None:
+        fill = "#d6f7ff" if active else "#eafcff"
+        self.delete("all")
+        self.create_oval(0, 0, 42, 42, fill=fill, outline="")
+        self.create_oval(188, 0, 230, 42, fill=fill, outline="")
+        self.create_rectangle(21, 0, 209, 42, fill=fill, outline="")
+        self.create_text(64, 21, text="Made by JEKO", fill="#17435a", font=("Segoe UI Semibold", 9))
+        self.create_line(130, 10, 130, 32, fill="#a9deeb", width=1)
+        self.create_text(175, 21, text="My GitHub", fill="#0879ad", font=("Segoe UI", 9, "underline"))
 
 
 class ConverterApp:
@@ -199,7 +232,7 @@ class ConverterApp:
         self.root = root
         self.root.title(APP_NAME)
         self.root.geometry("980x720")
-        self.root.minsize(860, 630)
+        self.root.minsize(860, 640)
         self.root.configure(bg=self.SKY)
 
         self.events: queue.Queue = queue.Queue()
@@ -220,16 +253,12 @@ class ConverterApp:
         self.root.after(120, self._poll_events)
 
     def _create_ui(self) -> None:
-        canvas = tk.Canvas(self.root, bg=self.SKY, highlightthickness=0)
-        canvas.pack(fill="both", expand=True)
-        canvas.bind("<Configure>", self._draw_background)
+        # A regular frame layout is deliberately used here. Canvas-embedded widgets
+        # can receive a zero height on older Tk builds, leaving a blank window.
+        self.content = tk.Frame(self.root, bg=self.SKY)
+        self.content.pack(fill="both", expand=True)
 
-        self.content = tk.Frame(canvas, bg=self.SKY)
-        self.content_window = canvas.create_window(0, 0, window=self.content, anchor="nw")
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(self.content_window, width=event.width))
-        self.content.pack_propagate(False)
-
-        top = tk.Frame(self.content, bg=self.SKY, padx=42, pady=28)
+        top = tk.Frame(self.content, bg=self.SKY, padx=42, pady=8)
         top.pack(fill="x")
         top.columnconfigure(0, weight=1)
 
@@ -241,17 +270,10 @@ class ConverterApp:
             row=1, column=0, sticky="w", pady=(5, 0)
         )
 
-        signature = tk.Frame(top, bg="#eafcff", highlightbackground="#a9deeb", highlightthickness=1, padx=12, pady=8)
-        signature.grid(row=0, column=1, rowspan=2, sticky="e")
-        tk.Label(signature, text="Made by JEKO", bg="#eafcff", fg=self.INK, font=("Segoe UI Semibold", 9)).pack(side="left")
-        github = tk.Label(signature, text="My GitHub", bg="#eafcff", fg="#0879ad", font=("Segoe UI", 9, "underline"), cursor="hand2")
-        github.pack(side="left", padx=(12, 0))
-        github.bind("<Button-1>", lambda event: webbrowser.open_new_tab(GITHUB_URL))
-        github.bind("<Enter>", lambda event: github.configure(fg="#0a4c7a"))
-        github.bind("<Leave>", lambda event: github.configure(fg="#0879ad"))
+        AeroSignature(top).grid(row=0, column=1, rowspan=2, sticky="e")
 
-        card = tk.Frame(self.content, bg=self.WHITE, highlightbackground=self.BORDER, highlightthickness=1, padx=30, pady=28)
-        card.pack(fill="both", expand=True, padx=42, pady=(4, 26))
+        card = tk.Frame(self.content, bg=self.WHITE, highlightbackground=self.BORDER, highlightthickness=1, padx=24, pady=10)
+        card.pack(fill="both", expand=True, padx=42, pady=(2, 8))
         card.columnconfigure(0, weight=1)
         card.rowconfigure(6, weight=1)
 
@@ -269,12 +291,12 @@ class ConverterApp:
         self._folder_row(card, 1, "1  Source folder", "Where your Excel files live", self.source_var, self.choose_source)
         self._folder_row(card, 2, "2  PDF destination", "Where converted PDFs will be saved", self.target_var, self.choose_target)
 
-        info = tk.Frame(card, bg="#eefdff", highlightbackground="#c0e9f1", highlightthickness=1, padx=16, pady=12)
-        info.grid(row=3, column=0, sticky="ew", pady=(2, 18))
+        info = tk.Frame(card, bg="#eefdff", highlightbackground="#c0e9f1", highlightthickness=1, padx=16, pady=6)
+        info.grid(row=3, column=0, sticky="ew", pady=(2, 8))
         tk.Label(info, text="Works with", bg="#eefdff", fg=self.DEEP_WATER, font=("Segoe UI Semibold", 9)).pack(side="left")
         tk.Label(info, text="  XLS   XLSX   XLSM   XLSB   XLT   XLTX   XLTM", bg="#eefdff", fg=self.MUTED, font=("Segoe UI", 9)).pack(side="left")
 
-        status = tk.Frame(card, bg="#e8fbf5", highlightbackground="#ace4d2", highlightthickness=1, padx=18, pady=16)
+        status = tk.Frame(card, bg="#e8fbf5", highlightbackground="#ace4d2", highlightthickness=1, padx=18, pady=10)
         status.grid(row=4, column=0, sticky="ew")
         status.columnconfigure(0, weight=1)
         tk.Label(status, text="CONVERSION STATUS", bg="#e8fbf5", fg="#16805f", font=("Segoe UI Semibold", 9)).grid(row=0, column=0, sticky="w")
@@ -282,19 +304,19 @@ class ConverterApp:
         tk.Label(status, textvariable=self.status_var, bg="#e8fbf5", fg=self.INK, font=("Segoe UI Semibold", 10), anchor="w").grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 11))
         self.progress = ttk.Progressbar(status, mode="determinate", maximum=100, value=0, style="Aero.Horizontal.TProgressbar")
         self.progress.grid(row=2, column=0, columnspan=2, sticky="ew")
-        tk.Label(status, textvariable=self.detail_var, bg="#e8fbf5", fg=self.MUTED, font=("Segoe UI", 9), anchor="w").grid(row=3, column=0, sticky="w", pady=(10, 0))
-        tk.Label(status, textvariable=self.summary_var, bg="#e8fbf5", fg=self.MUTED, font=("Segoe UI", 9), anchor="e").grid(row=3, column=1, sticky="e", pady=(10, 0))
+        tk.Label(status, textvariable=self.detail_var, bg="#e8fbf5", fg=self.MUTED, font=("Segoe UI", 9), anchor="w").grid(row=3, column=0, sticky="w", pady=(7, 0))
+        tk.Label(status, textvariable=self.summary_var, bg="#e8fbf5", fg=self.MUTED, font=("Segoe UI", 9), anchor="e").grid(row=3, column=1, sticky="e", pady=(7, 0))
 
         log_frame = tk.Frame(card, bg=self.WHITE)
-        log_frame.grid(row=5, column=0, sticky="nsew", pady=(16, 0))
+        log_frame.grid(row=5, column=0, sticky="nsew", pady=(7, 0))
         tk.Label(log_frame, text="Activity", bg=self.WHITE, fg=self.INK, font=("Segoe UI Semibold", 10)).pack(anchor="w", pady=(0, 7))
-        self.log = ScrolledText(log_frame, height=6, bg="#f6fdff", fg="#315d70", relief="flat", bd=1, highlightbackground="#c6eaf1", highlightthickness=1, font=("Consolas", 9), padx=10, pady=9, wrap="word")
+        self.log = ScrolledText(log_frame, height=2, bg="#f6fdff", fg="#315d70", relief="flat", bd=1, highlightbackground="#c6eaf1", highlightthickness=1, font=("Consolas", 9), padx=10, pady=7, wrap="word")
         self.log.pack(fill="both", expand=True)
         self.log.configure(state="disabled")
         self._render_log()
 
         actions = tk.Frame(card, bg=self.WHITE)
-        actions.grid(row=6, column=0, sticky="ew", pady=(20, 0))
+        actions.grid(row=6, column=0, sticky="ew", pady=(8, 0))
         self.convert_button = AeroButton(actions, "Convert to PDF", self.start_conversion, primary=True)
         self.convert_button.pack(side="left")
         tk.Label(actions, text="No administrator rights needed.", bg=self.WHITE, fg=self.MUTED, font=("Segoe UI", 9)).pack(side="left", padx=(16, 0))
@@ -303,21 +325,12 @@ class ConverterApp:
         style.theme_use("clam")
         style.configure("Aero.Horizontal.TProgressbar", troughcolor="#ccefe5", background="#16b987", lightcolor="#16b987", darkcolor="#16b987", bordercolor="#ccefe5", thickness=12)
 
-    def _draw_background(self, event) -> None:
-        canvas = event.widget
-        width, height = event.width, event.height
-        canvas.delete("aero")
-        canvas.create_rectangle(0, 0, width, height, fill=self.SKY, outline="", tags="aero")
-        canvas.create_oval(width * 0.67, -height * 0.25, width * 1.12, height * 0.35, fill="#caeff8", outline="", tags="aero")
-        canvas.create_oval(-width * 0.18, height * 0.73, width * 0.48, height * 1.25, fill="#b8edf5", outline="", tags="aero")
-        canvas.tag_lower("aero")
-
     def _folder_row(self, parent, row: int, title: str, hint: str, variable: tk.StringVar, command: Callable) -> None:
         block = tk.Frame(parent, bg=self.WHITE)
-        block.grid(row=row, column=0, sticky="ew", pady=(18 if row == 1 else 14, 0))
+        block.grid(row=row, column=0, sticky="ew", pady=(10 if row == 1 else 8, 0))
         block.columnconfigure(0, weight=1)
         tk.Label(block, text=title, bg=self.WHITE, fg=self.INK, font=("Segoe UI Semibold", 10)).grid(row=0, column=0, sticky="w")
-        tk.Label(block, text=hint, bg=self.WHITE, fg=self.MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=(3, 7))
+        tk.Label(block, text=hint, bg=self.WHITE, fg=self.MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=(2, 4))
         entry = tk.Entry(block, textvariable=variable, bg="#f9feff", fg=self.INK, relief="flat", highlightbackground=self.BORDER, highlightcolor=self.DEEP_WATER, highlightthickness=1, font=("Segoe UI", 10), insertbackground=self.INK)
         entry.grid(row=2, column=0, sticky="ew", ipady=9)
         button = AeroButton(block, "Browse", command)
